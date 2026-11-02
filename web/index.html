@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dost: your friend in every language</title>
+  <meta name="description" content="Chat with Dost, a best-friend bot that remembers you, searches the web and learns new skills.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip" href="#composer-input">Skip to message box</a>
+
+  <header class="topbar">
+    <div class="who">
+      <span class="avatar" aria-hidden="true">द</span>
+      <div>
+        <h1 class="bot-name" id="bot-name">Dost</h1>
+        <p class="status" id="status">Your friend, in every language</p>
+      </div>
+    </div>
+    <div class="top-actions" id="top-actions" hidden>
+      <button class="btn ghost" id="open-panel" aria-controls="panel" aria-expanded="false">Skills &amp; memory</button>
+      <button class="btn ghost" id="sign-out">Sign out</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Sign in -->
+    <section class="signin" id="signin" aria-labelledby="signin-title">
+      <h2 id="signin-title" class="greet">नमस्ते. Hello. Hola.</h2>
+      <p class="lede">Tell me what to call you. I'll remember the rest as we talk.</p>
+      <form id="signin-form" class="signin-form">
+        <label for="name">Your name</label>
+        <input id="name" name="name" autocomplete="nickname" required maxlength="40">
+        <label for="password">Access password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <p class="error" id="signin-error" role="alert"></p>
+        <button class="btn primary" type="submit">Start chatting</button>
+      </form>
+    </section>
+
+    <!-- Chat -->
+    <section class="chat" id="chat" aria-label="Conversation" hidden>
+      <div class="log" id="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0" aria-label="Messages">
+        <div class="empty" id="empty">
+          <h2 class="greet" id="empty-greet">Kya haal hai?</h2>
+          <p class="lede">Talk to me in Hindi, English, Hinglish or any language. Things to try:</p>
+          <ul class="ideas">
+            <li><button class="idea" type="button">Aaj ka din bahut boring tha yaar</button></li>
+            <li><button class="idea" type="button">Show me photos of the Valley of Flowers</button></li>
+            <li><button class="idea" type="button">आज की बड़ी खबरें क्या हैं?</button></li>
+            <li><button class="idea" type="button">Write a Python script that renames my photos by date</button></li>
+          </ul>
+        </div>
+      </div>
+
+      <form class="composer" id="composer">
+        <label class="sr-only" for="composer-input">Message</label>
+        <textarea id="composer-input" rows="1" placeholder="Message Dost…" enterkeyhint="send"></textarea>
+        <button class="icon-btn" type="button" id="mic" aria-label="Record a voice note" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.59a6 6 0 0 0 5-5.91Z"/></svg>
+        </button>
+        <button class="icon-btn send" type="submit" id="send" aria-label="Send">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3.4 20.4 21 12 3.4 3.6l-.01 6.53L15 12l-11.61 1.87z"/></svg>
+        </button>
+      </form>
+    </section>
+  </main>
+
+  <aside class="panel" id="panel" aria-labelledby="panel-title" hidden>
+    <div class="panel-head">
+      <h2 id="panel-title">Skills &amp; memory</h2>
+      <button class="btn ghost" id="close-panel">Close</button>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Panel sections">
+      <button role="tab" id="tab-skills" aria-controls="sec-skills" aria-selected="true">Skills</button>
+      <button role="tab" id="tab-memory" aria-controls="sec-memory" aria-selected="false" tabindex="-1">Memory</button>
+      <button role="tab" id="tab-link" aria-controls="sec-link" aria-selected="false" tabindex="-1">Link Telegram</button>
+    </div>
+
+    <section class="tabpanel" id="sec-skills" role="tabpanel" aria-labelledby="tab-skills">
+      <p class="hint">Skills are tools I write for myself from your instructions and API keys. You can also just ask in chat: “make a song skill using this API…”.</p>
+      <ul class="list" id="skill-list"></ul>
+      <details class="new-skill">
+        <summary>Build a new skill</summary>
+        <form id="skill-form" class="stack">
+          <label for="skill-name">Name</label>
+          <input id="skill-name" required placeholder="song_player" maxlength="40">
+          <label for="skill-request">What it should do (include API endpoints and response format)</label>
+          <textarea id="skill-request" rows="6" required></textarea>
+          <label for="skill-secrets">Secrets, one per line as KEY=value</label>
+          <textarea id="skill-secrets" rows="3" spellcheck="false" placeholder="SEARCH_API_URL=https://…&#10;API_KEY=…"></textarea>
+          <p class="error" id="skill-error" role="alert"></p>
+          <button class="btn primary" type="submit" id="skill-submit">Build and test skill</button>
+        </form>
+      </details>
+    </section>
+
+    <section class="tabpanel" id="sec-memory" role="tabpanel" aria-labelledby="tab-memory" hidden>
+      <p class="hint">What I remember about you. I search these, plus our older chats, every time we talk.</p>
+      <ul class="list" id="memory-list"></ul>
+      <button class="btn ghost" id="reset-chat">Start a fresh conversation</button>
+    </section>
+
+    <section class="tabpanel" id="sec-link" role="tabpanel" aria-labelledby="tab-link" hidden>
+      <p class="hint">Use the same me (memories and skills) on Telegram and here.</p>
+      <h3>From this browser to Telegram</h3>
+      <button class="btn ghost" id="make-code">Get a link code</button>
+      <p class="code-out" id="code-out" aria-live="polite"></p>
+      <h3>From Telegram to this browser</h3>
+      <form id="link-form" class="stack">
+        <label for="link-code">Code from /link on Telegram</label>
+        <input id="link-code" required autocomplete="one-time-code" maxlength="12">
+        <p class="error" id="link-error" role="alert"></p>
+        <button class="btn primary" type="submit">Link accounts</button>
+      </form>
+    </section>
+  </aside>
+
+  <footer class="foot">
+    <p>Your chats, memories and skills stay in your own database.</p>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>

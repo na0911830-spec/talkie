@@ -1,0 +1,36 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dost
+      POSTGRES_PASSWORD: dost
+      POSTGRES_DB: dost
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dost -d dost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://dost:dost@db:5432/dost
+      DATA_DIR: /data
+    ports:
+      - "8080:8080"
+    volumes:
+      - botdata:/data
+
+volumes:
+  pgdata:
+  botdata:
