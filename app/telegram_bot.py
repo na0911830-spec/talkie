@@ -8,10 +8,13 @@ import secrets as pysecrets
 import typing
 
 import httpx
-from telegram import Update
+import html
+
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction, ParseMode
 from telegram.error import TelegramError
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler,
+                          filters)
 
 from . import auth, config, media
 from .agent import Agent, Reply
@@ -20,26 +23,37 @@ from .textfmt import md_to_telegram_html, split_message
 log = logging.getLogger("dost.telegram")
 
 HELP = (
-    "Hey! I'm <b>{bot}</b>, your real-life best friend (dost/yaar/buddy). Chat with me in any language!\n\n"
-    "✨ <b>What I can do</b>:\n"
-    "• Chat naturally in Hinglish, English, Hindi, etc.\n"
-    "• Search the web, fetch news, weather &amp; facts\n"
-    "• Play music and songs (Muzo skill) and send playable audio\n"
-    "• Send photos, generate AI images, describe sent pictures\n"
-    "• Voice notes support: send me voice, I listen and respond\n"
-    "• Build and execute custom skills\n"
-    "• Set reminders (e.g. 'remind me to stand up at 5pm')\n"
-    "• Remember facts about you\n\n"
-    "⚙️ <b>Commands</b>:\n"
-    "• /newchat or /reset - Start a fresh chat session (keeps your long-term memories)\n"
-    "• /reminders - View your active reminders\n"
-    "• /skills - View your custom skills\n"
-    "• /memory - View what I know about you\n"
-    "• /forget - Wipe all stored memories and history\n"
-    "• /link - Link with your web account\n"
-    "• /setpassword &lt;new_password&gt; - Update your account password\n"
-    "• /help - Show this guide"
+    "Hey! I'm <b>{bot}</b>, your friend who also happens to be a researcher and a coder. "
+    "Talk to me in any language.\n\n"
+    "<b>What I can do</b>\n"
+    "🌐 Search the internet, read any website and even its source code\n"
+    "💻 Write, run and debug code\n"
+    "🧩 Build skills for myself: ask me to create, upgrade, test, share or hide them\n"
+    "🎵 Play music, 🎨 draw images, 🖼 look at your photos, 🎙 answer voice notes\n"
+    "⏰ Set reminders and remember what matters to you\n\n"
+    "<b>Commands</b>\n"
+    "/skills: your skills (make public or private, switch on/off)\n"
+    "/community: skills shared by others\n"
+    "/reminders: what's coming up\n"
+    "/memory: what I know about you\n"
+    "/newchat: fresh conversation (I keep my memories)\n"
+    "/forget: wipe memories and history\n"
+    "/link: connect your web account\n"
+    "/setpassword &lt;new password&gt;\n"
+    "/help: this guide\n\n"
+    "<i>Try: “latest news on ISRO”, “open example.com and show me its HTML”, "
+    "“make a skill that tells me cricket scores”.</i>"
 )
+
+COMMANDS = [
+    ("skills", "My skills: upgrade, share, hide"), ("community", "Skills shared by others"),
+    ("reminders", "Upcoming reminders"), ("memory", "What I know about you"),
+    ("newchat", "Start a fresh chat"), ("link", "Link your web account"), ("help", "What I can do"),
+]
+
+
+def _esc(text: str) -> str:
+    return html.escape(str(text), quote=False)
 
 
 class TelegramBot:
@@ -62,6 +76,8 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("skills", self.cmd_skills))
         self.app.add_handler(CommandHandler(["reminders", "reminder"], self.cmd_reminders))
         self.app.add_handler(CommandHandler("link", self.cmd_link))
+        self.app.add_handler(CommandHandler("community", self.cmd_community))
+        self.app.add_handler(CallbackQueryHandler(self.on_button))
         self.app.add_handler(CommandHandler("setpassword", self.cmd_set_password))
 
         # Media & document handlers
@@ -73,6 +89,10 @@ class TelegramBot:
     async def start(self) -> None:
         await self.app.initialize()
         await self.app.start()
+        try:
+            await self.app.bot.set_my_commands([BotCommand(c, d) for c, d in COMMANDS])
+        except Exception as exc:  # noqa: BLE001
+            log.warning("could not set command menu: %s", exc)
         await self.app.updater.start_polling(drop_pending_updates=True)
         self._reminder_task = asyncio.create_task(self._reminder_worker())
         me = await self.app.bot.get_me()
@@ -117,7 +137,7 @@ class TelegramBot:
                         msg = (
                             f"⏰ <b>Reminder!</b>\n\n"
                             f"Hey, you asked me to remind you:\n"
-                            f"👉 <b>{text}</b>\n\n"
+                            f"👉 <b>{_esc(text)}</b>\n\n"
                             f"Ho gaya ya abhi kar raha hai? 😊"
                         )
                         try:
@@ -364,32 +384,48 @@ class TelegramBot:
             log.warning("send %s failed: %s", kind, exc)
 
     async def _chat(self, update: Update, text: str, uid: int, is_voice: bool = False) -> None:
-        if is_voice:
-            await update.effective_chat.send_action(ChatAction.RECORD_VOICE)
-        else:
-            await update.effective_chat.send_action(ChatAction.TYPING)
-        chat_id = str(update.effective_chat.id) if update.effective_chat else ""
-
+        chat = update.effective_chat
+        action = ChatAction.RECORD_VOICE if is_voice else ChatAction.TYPING
+        chat_id = str(chat.id) if chat else ""
         status_msg: typing.Any = None
+        last_status = ""
 
         async def _notify_status(msg_text: str) -> None:
-            nonlocal status_msg
+            """One live status bubble that is edited as the work moves along."""
+            nonlocal status_msg, last_status
+            if msg_text == last_status or not update.message:
+                return
+            last_status = msg_text
             try:
-                if update.message:
-                    status_msg = await update.message.reply_text(
-                        msg_text,
-                        reply_to_message_id=update.message.message_id,
-                    )
-            except Exception as e:
-                log.debug("could not send status msg: %s", e)
+                if status_msg is None:
+                    status_msg = await update.message.reply_text(f"⏳ {msg_text}", disable_notification=True)
+                else:
+                    await status_msg.edit_text(f"⏳ {msg_text}")
+            except Exception as e:  # noqa: BLE001
+                log.debug("status update failed: %s", e)
 
-        reply = await self.agent.respond(uid, text, channel="telegram", chat_id=chat_id, status_callback=_notify_status)
+        async def _keep_typing() -> None:
+            while True:
+                try:
+                    await chat.send_action(action)
+                except Exception:  # noqa: BLE001
+                    pass
+                await asyncio.sleep(4)
 
-        # Delete status message if it was sent so reply is clean
+        typer = asyncio.create_task(_keep_typing())
+        try:
+            reply = await self.agent.respond(uid, text, channel="telegram", chat_id=chat_id,
+                                             status_callback=_notify_status)
+        except Exception:  # noqa: BLE001
+            log.exception("chat failed")
+            reply = Reply(text="Something went wrong on my side. Please try again in a moment.")
+        finally:
+            typer.cancel()
+
         if status_msg:
             try:
                 await status_msg.delete()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
 
         await self._send_reply(update, reply, is_voice=is_voice)
@@ -530,7 +566,7 @@ class TelegramBot:
         if uid:
             msg_id = update.message.message_id
             await update.message.reply_text(
-                f"Hey {full_name} (@{username})! You are already signed in.\n\n" + HELP.format(bot=config.BOT_NAME),
+                f"Hey {_esc(full_name)} (@{_esc(username)})! You are already signed in.\n\n" + HELP.format(bot=config.BOT_NAME),
                 parse_mode=ParseMode.HTML,
                 reply_to_message_id=msg_id,
             )
@@ -540,12 +576,12 @@ class TelegramBot:
         if state == "awaiting_login_password":
             await update.message.reply_text(
                 f"👋 Welcome back, {full_name}! (@{username})\n\n"
-                "🔒 **Sign In**: Please reply with your password to continue:"
+                "🔒 Sign in: please reply with your password to continue."
             )
         else:
             await update.message.reply_text(
                 f"👋 Welcome, {full_name}! (@{username})\n\n"
-                "✨ **Sign Up**: Please set a password for your account (reply with your desired password):"
+                "✨ Sign up: please reply with a password for your account (at least 4 characters)."
             )
 
     async def cmd_newchat(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -611,22 +647,100 @@ class TelegramBot:
             return
 
         items = await self.db.list_memories(uid)
-        text = "\n".join(f"• {m['content']}" for m in items[:40]) or "I don't know much about you yet, tell me something!"
-        await update.message.reply_text(text)
+        if not items:
+            await update.message.reply_text("I don't know much about you yet, tell me something!")
+            return
+        text = "🧠 <b>What I remember about you</b>\n\n" + "\n".join(f"• {_esc(m['content'])}" for m in items[:40])
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+    async def _skills_view(self, uid: int) -> tuple[str, InlineKeyboardMarkup | None]:
+        items = await self.db.list_skills(uid)
+        if not items:
+            return ("🧩 <b>No skills yet.</b>\n\nAsk me, for example:\n"
+                    "<i>“Make a skill called weather that gets today's weather for any city using wttr.in”</i>",
+                    None)
+        lines, rows = ["🧩 <b>Your skills</b>\n"], []
+        for s in items:
+            flags = ("🟢 on" if s["enabled"] else "⚪ off") + (" · 🌍 public" if s.get("is_public") else " · 🔒 private")
+            lines.append(f"<b>{_esc(s['name'])}</b> ({flags})\n{_esc(s['description'][:140])}\n")
+            n = s["name"]
+            rows.append([
+                InlineKeyboardButton("🔒 Make private" if s.get("is_public") else "🌍 Make public",
+                                     callback_data=f"sk:{'priv' if s.get('is_public') else 'pub'}:{n}"),
+                InlineKeyboardButton("⚪ Turn off" if s["enabled"] else "🟢 Turn on",
+                                     callback_data=f"sk:{'off' if s['enabled'] else 'on'}:{n}"),
+                InlineKeyboardButton("🗑", callback_data=f"sk:del:{n}"),
+            ])
+        lines.append("To upgrade a skill just tell me: <i>“upgrade skill NAME to also …”</i>")
+        return "\n".join(lines), InlineKeyboardMarkup(rows[:20])
 
     async def cmd_skills(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._allowed(update) or not update.message:
             return
-
         uid = await self._authenticate_user(update, context)
         if not uid:
             await update.message.reply_text("🔒 Please enter your password first:")
             return
+        text, kb = await self._skills_view(uid)
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
 
-        items = await self.db.list_skills(uid)
-        text = "\n".join(f"• {s['name']}: {s['description']}" for s in items) or (
-            "No custom skills yet. You can ask me anytime: 'Make a song skill called muzo with this API...'")
-        await update.message.reply_text(text)
+    async def cmd_community(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._allowed(update) or not update.message:
+            return
+        uid = await self._authenticate_user(update, context)
+        if not uid:
+            await update.message.reply_text("🔒 Please enter your password first:")
+            return
+        items = await self.db.list_public_skills(uid)
+        if not items:
+            await update.message.reply_text("No public skills yet. Share one from /skills to be the first!")
+            return
+        lines, rows = ["🌍 <b>Community skills</b>\n"], []
+        for s in items[:15]:
+            lines.append(f"<b>{_esc(s['name'])}</b> by {_esc(s.get('author_name') or 'Anonymous')}\n"
+                         f"{_esc(s['description'][:140])}\n")
+            rows.append([InlineKeyboardButton(f"➕ Install {s['name']}"[:60], callback_data=f"pk:in:{s['id']}")])
+        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML,
+                                        reply_markup=InlineKeyboardMarkup(rows))
+
+    async def on_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        q = update.callback_query
+        if not q or not q.data or not self._allowed(update):
+            return
+        uid = await self._authenticate_user(update, context)
+        if not uid:
+            await q.answer("Please sign in first.", show_alert=True)
+            return
+        parts = q.data.split(":", 2)
+        try:
+            if parts[0] == "pk" and parts[1] == "in":
+                done = await self.db.install_public_skill(uid, int(parts[2]))
+                await q.answer(f"Installed {done['name']}! Add your own keys by asking me." if done
+                               else "Skill not found.", show_alert=True)
+                return
+            if parts[0] == "sk":
+                action, name = parts[1], parts[2]
+                if action == "del":
+                    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Yes, delete", callback_data=f"sk:del!:{name}"),
+                                                InlineKeyboardButton("Cancel", callback_data="sk:back:-")]])
+                    await q.edit_message_text(f"Delete skill “{name}” for good?", reply_markup=kb)
+                    await q.answer()
+                    return
+                if action == "del!":
+                    await self.db.delete_skill(uid, name)
+                elif action in ("pub", "priv"):
+                    await self.db.update_skill_fields(uid, name, is_public=action == "pub")
+                elif action in ("on", "off"):
+                    await self.db.update_skill_fields(uid, name, enabled=action == "on")
+                text, kb = await self._skills_view(uid)
+                await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+                await q.answer("Done ✅" if action != "back" else None)
+        except TelegramError as exc:
+            log.debug("button update: %s", exc)
+            await q.answer()
+        except Exception:  # noqa: BLE001
+            log.exception("button failed")
+            await q.answer("That did not work, try again.", show_alert=True)
 
     async def cmd_reminders(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._allowed(update) or not update.message:
@@ -647,7 +761,7 @@ class TelegramBot:
         lines = []
         for r in items:
             dt = r["remind_at"].astimezone(tz_ist).strftime("%I:%M %p (%d %b)")
-            lines.append(f"⏰ <b>{r['reminder_text']}</b> at {dt}")
+            lines.append(f"⏰ <b>{_esc(r['reminder_text'])}</b> at {dt}")
         await update.message.reply_text("📋 <b>Your Reminders</b>:\n\n" + "\n".join(lines), parse_mode=ParseMode.HTML)
 
     async def cmd_link(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

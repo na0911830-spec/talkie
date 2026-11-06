@@ -25,10 +25,23 @@ def _fn(name: str, description: str, properties: dict, required: list[str]) -> d
 
 
 BUILTIN_TOOLS = [
-    _fn("web_search", "Search the web for current facts, news, weather.",
-        {"query": {"type": "string"}}, ["query"]),
-    _fn("fetch_webpage", "Read text of a web page.",
-        {"url": {"type": "string"}}, ["url"]),
+    _fn("web_search", "Search the internet. Use for anything current or uncertain: news, prices, weather, docs, "
+        "people, sports. kind='news' for recent headlines. Follow up with fetch_webpage on the best 1-3 results "
+        "before answering factual questions.",
+        {"query": {"type": "string"},
+         "kind": {"type": "string", "enum": ["text", "news"]},
+         "max_results": {"type": "integer"}}, ["query"]),
+    _fn("fetch_webpage", "Open any http(s) URL. mode='text' (default) returns readable article text; mode='html' "
+        "returns the raw page source/code (use it to inspect markup, scripts, APIs, meta tags); mode='links' "
+        "lists all links on the page. Long pages: pass offset to read the next part.",
+        {"url": {"type": "string"},
+         "mode": {"type": "string", "enum": ["text", "html", "links"]},
+         "offset": {"type": "integer"}}, ["url"]),
+    _fn("http_request", "Call an HTTP API or endpoint (GET/POST/PUT/DELETE/HEAD) and see status, headers and body. "
+        "Use to test APIs, check if a site is up, or read JSON endpoints.",
+        {"url": {"type": "string"}, "method": {"type": "string"},
+         "headers": {"type": "object"}, "json_body": {"type": "object"}, "body": {"type": "string"}},
+        ["url"]),
     _fn("search_images", "Find photos on the internet.",
         {"query": {"type": "string"}, "count": {"type": "integer"}}, ["query"]),
     _fn("generate_image", "Generate an AI drawing.",
@@ -52,8 +65,14 @@ BUILTIN_TOOLS = [
     _fn("list_skills", "List user skills.", {}, []),
     _fn("delete_skill", "Delete user skill.", {"name": {"type": "string"}}, ["name"]),
     _fn("list_public_skills", "List community skills.", {}, []),
-    _fn("share_skill_publicly", "Share skill publicly.",
+    _fn("share_skill_publicly", "Make one of the user's skills public so everyone can install it. "
+        "Secrets are never shared.", {"name": {"type": "string"}}, ["name"]),
+    _fn("make_skill_private", "Make a public skill private again (removes it from the community catalog).",
         {"name": {"type": "string"}}, ["name"]),
+    _fn("set_skill_enabled", "Turn a skill on or off without deleting it.",
+        {"name": {"type": "string"}, "enabled": {"type": "boolean"}}, ["name", "enabled"]),
+    _fn("test_skill", "Run a skill's code with example arguments to check that it works, and report the result.",
+        {"name": {"type": "string"}, "args": {"type": "object"}}, ["name"]),
     _fn("install_skill", "Install a community skill (e.g. 'muzo').",
         {"name": {"type": "string"}, "skill_id": {"type": "integer"}}, []),
     _fn("set_reminder",
@@ -77,17 +96,34 @@ class ToolContext:
     attachments: list[dict] = field(default_factory=list)
     status_callback: typing.Callable[[str], typing.Awaitable[None]] | None = None
 
+    async def notify(self, text: str) -> None:
+        """Tell the user what is happening (shown as live status). Never raises."""
+        if self.status_callback:
+            try:
+                await self.status_callback(text)
+            except Exception:  # noqa: BLE001
+                pass
+
 
 def _clip(text: str, n: int = 3500) -> str:
     return text if len(text) <= n else text[:n] + "…"
 
 
-async def web_search(query: str, max_results: int = 5) -> list[dict]:
+async def web_search(query: str, max_results: int = 5, kind: str = "text") -> list[dict]:
     from ddgs import DDGS
 
     def _run() -> list[dict]:
-        return DDGS().text(query, max_results=max_results) or []
-    return await asyncio.to_thread(_run)
+        d = DDGS()
+        if kind == "news":
+            return d.news(query, max_results=max_results) or []
+        return d.text(query, max_results=max_results) or []
+    for attempt in range(2):
+        try:
+            return await asyncio.to_thread(_run)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("search attempt %s failed: %s", attempt + 1, exc)
+            await asyncio.sleep(0.6)
+    return []
 
 
 async def image_search(query: str, count: int = 2) -> list[dict]:
@@ -98,18 +134,84 @@ async def image_search(query: str, count: int = 2) -> list[dict]:
     return await asyncio.to_thread(_run)
 
 
-async def fetch_text(url: str) -> str:
-    async with httpx.AsyncClient(timeout=20, follow_redirects=True,
-                                 headers={"User-Agent": "Mozilla/5.0 (DostBot)"}) as c:
-        r = await c.get(url)
-    ctype = r.headers.get("content-type", "")
-    if "html" not in ctype:
-        return r.text[:6000]
-    soup = BeautifulSoup(r.text, "html.parser")
-    for tag in soup(["script", "style", "noscript", "svg", "nav", "footer", "header"]):
+import ipaddress
+import socket
+from urllib.parse import urljoin, urlparse
+
+_UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+       "Chrome/124.0 Safari/537.36 TalkieBot/2.0")
+PAGE_CHUNK = 6000
+
+
+def check_public_url(url: str) -> str | None:
+    """Return an error when the URL is not http(s) or points at a private/internal address."""
+    try:
+        parts = urlparse(url)
+    except ValueError:
+        return "Invalid URL."
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return "Please give a full http(s) URL."
+    try:
+        infos = socket.getaddrinfo(parts.hostname, parts.port or 443, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return f"Could not resolve host {parts.hostname}."
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            return "Blocked: that address is on a private network."
+    return None
+
+
+async def _get(url: str, *, method: str = "GET", **kw) -> httpx.Response:
+    err = await asyncio.to_thread(check_public_url, url)
+    if err:
+        raise ValueError(err)
+    headers = {"User-Agent": _UA, "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
+               "Accept-Language": "en-US,en;q=0.9", **(kw.pop("headers", None) or {})}
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True, max_redirects=5, headers=headers) as c:
+        r = await c.request(method, url, **kw)
+    final_err = await asyncio.to_thread(check_public_url, str(r.url))
+    if final_err:
+        raise ValueError(final_err)
+    return r
+
+
+def _readable(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    title = soup.title.get_text(strip=True) if soup.title else ""
+    for tag in soup(["script", "style", "noscript", "svg", "iframe", "form"]):
         tag.decompose()
-    text = re.sub(r"\n{3,}", "\n\n", soup.get_text("\n"))
-    return re.sub(r"[ \t]+", " ", text).strip()
+    root = soup.find("main") or soup.find("article") or soup.body or soup
+    text = re.sub(r"\n{3,}", "\n\n", root.get_text("\n"))
+    text = re.sub(r"[ \t]+", " ", text).strip()
+    return (f"# {title}\n\n" if title else "") + text
+
+
+async def fetch_text(url: str, mode: str = "text", offset: int = 0) -> str:
+    r = await _get(url)
+    ctype = r.headers.get("content-type", "")
+    head = f"[{r.status_code}] {r.url}\n"
+    if "html" in ctype or "xml" in ctype or not ctype:
+        if mode == "html":
+            body = r.text
+        elif mode == "links":
+            soup = BeautifulSoup(r.text, "html.parser")
+            seen, rows = set(), []
+            for a in soup.find_all("a", href=True):
+                href = urljoin(str(r.url), a["href"])
+                if href.startswith("http") and href not in seen:
+                    seen.add(href)
+                    rows.append(f"- {a.get_text(' ', strip=True)[:80] or '(no text)'} -> {href}")
+            body = "\n".join(rows) or "No links found."
+        else:
+            body = _readable(r.text)
+    else:
+        body = r.text
+    total = len(body)
+    chunk = body[offset:offset + PAGE_CHUNK]
+    more = (f"\n[...truncated: showing {offset}-{offset + len(chunk)} of {total} chars. "
+            f"Call again with offset={offset + PAGE_CHUNK} for more.]") if offset + PAGE_CHUNK < total else ""
+    return head + chunk + more
 
 
 async def _image_ok(client: httpx.AsyncClient, url: str) -> bool:
@@ -142,18 +244,61 @@ async def execute(name: str, args: dict, ctx: ToolContext, skill_map: dict[str, 
 
 async def _t_web_search(args: dict, ctx: ToolContext) -> str:
     query = str(args.get("query") or args.get("input") or "").strip()
-    results = await web_search(query, 6)
+    if not query:
+        return "Give me something to search for."
+    kind = "news" if str(args.get("kind", "")).lower() == "news" else "text"
+    n = max(1, min(int(args.get("max_results") or 6), 10))
+    await ctx.notify(f"Searching the web for “{query[:60]}”…")
+    results = await web_search(query, n, kind)
     if not results:
-        return "No results."
-    lines = [f"- {r.get('title')}\n  {r.get('href')}\n  {r.get('body')}" for r in results]
-    return _clip(f"Results for '{query}':\n" + "\n".join(lines))
+        return "No results. Try different keywords."
+    lines = []
+    for i, r in enumerate(results, 1):
+        url = r.get("href") or r.get("url") or ""
+        extra = f" ({r.get('date')} · {r.get('source')})" if kind == "news" and r.get("date") else ""
+        lines.append(f"{i}. {r.get('title')}{extra}\n   {url}\n   {r.get('body') or ''}")
+    return _clip(f"Results for '{query}':\n" + "\n".join(lines) +
+                 "\n\nTip: open the best result with fetch_webpage for details.", 4500)
 
 
 async def _t_fetch(args: dict, ctx: ToolContext) -> str:
-    url = str(args.get("url") or args.get("input") or "")
-    if not url.startswith(("http://", "https://")):
-        return "Please give a full http(s) URL."
-    return _clip(await fetch_text(url), 5000)
+    url = str(args.get("url") or args.get("input") or "").strip()
+    if not url.startswith(("http://", "https://")) and "." in url and " " not in url:
+        url = "https://" + url
+    mode = str(args.get("mode") or "text").lower()
+    if mode not in ("text", "html", "links"):
+        mode = "text"
+    offset = max(0, int(args.get("offset") or 0))
+    await ctx.notify(f"Reading {urlparse(url).netloc or url}…")
+    try:
+        return await fetch_text(url, mode, offset)
+    except ValueError as exc:
+        return str(exc)
+    except httpx.HTTPError as exc:
+        return f"Could not open {url}: {type(exc).__name__}: {exc}"
+
+
+async def _t_http_request(args: dict, ctx: ToolContext) -> str:
+    url = str(args.get("url") or "").strip()
+    method = str(args.get("method") or "GET").upper()
+    if method not in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"):
+        return "Unsupported method."
+    kw: dict = {}
+    if isinstance(args.get("headers"), dict):
+        kw["headers"] = {str(k): str(v) for k, v in args["headers"].items()}
+    if isinstance(args.get("json_body"), dict):
+        kw["json"] = args["json_body"]
+    elif args.get("body"):
+        kw["content"] = str(args["body"]).encode()
+    await ctx.notify(f"Calling {method} {urlparse(url).netloc}…")
+    try:
+        r = await _get(url, method=method, **kw)
+    except ValueError as exc:
+        return str(exc)
+    except httpx.HTTPError as exc:
+        return f"Request failed: {type(exc).__name__}: {exc}"
+    hdrs = "\n".join(f"{k}: {v}" for k, v in list(r.headers.items())[:12])
+    return _clip(f"HTTP {r.status_code} {r.reason_phrase}\n{hdrs}\n\n{r.text[:4000]}", 5000)
 
 
 async def _t_search_images(args: dict, ctx: ToolContext) -> str:
@@ -175,11 +320,7 @@ async def _t_search_images(args: dict, ctx: ToolContext) -> str:
 
 async def _t_generate_image(args: dict, ctx: ToolContext) -> str:
     prompt = str(args.get("prompt") or args.get("input") or "")
-    if ctx.status_callback:
-        try:
-            await ctx.status_callback("Working on your image... 🎨 Just a moment!")
-        except Exception:
-            pass
+    await ctx.notify("Drawing your image…")
     try:
         data = await ctx.ai.generate_image(prompt)
         url = media.save_bytes(data, ".jpg")
@@ -302,11 +443,44 @@ async def _t_list_public_skills(args: dict, ctx: ToolContext) -> str:
 
 
 async def _t_share_skill_publicly(args: dict, ctx: ToolContext) -> str:
+    return await _set_visibility(ctx, args, True)
+
+
+async def _set_visibility(ctx: ToolContext, args: dict, public: bool) -> str:
     name = skills.slugify(str(args.get("name") or args.get("input") or ""))
-    ok = await ctx.db.update_skill_fields(ctx.user_id, name, is_public=True)
-    if ok:
-        return f"Skill '{name}' is now public and available for other users to install!"
-    return f"Could not find skill '{name}' to make public."
+    ok = await ctx.db.update_skill_fields(ctx.user_id, name, is_public=public)
+    if not ok:
+        return f"Could not find your skill '{name}'."
+    if public:
+        return (f"Skill '{name}' is now PUBLIC: others can install it from the community list. "
+                "Your secrets/API keys are never shared. Say 'make it private' to undo.")
+    return f"Skill '{name}' is now PRIVATE and removed from the community list."
+
+
+async def _t_make_skill_private(args: dict, ctx: ToolContext) -> str:
+    return await _set_visibility(ctx, args, False)
+
+
+async def _t_set_skill_enabled(args: dict, ctx: ToolContext) -> str:
+    name = skills.slugify(str(args.get("name") or ""))
+    enabled = args.get("enabled")
+    enabled = enabled if isinstance(enabled, bool) else str(enabled).lower() in ("true", "1", "yes", "on")
+    ok = await ctx.db.update_skill_fields(ctx.user_id, name, enabled=enabled)
+    return f"Skill '{name}' turned {'on' if enabled else 'off'}." if ok else f"No skill named '{name}'."
+
+
+async def _t_test_skill(args: dict, ctx: ToolContext) -> str:
+    name = skills.slugify(str(args.get("name") or ""))
+    s = await ctx.db.get_skill(ctx.user_id, name)
+    if not s:
+        return f"No skill named '{name}'."
+    test_args = args.get("args") if isinstance(args.get("args"), dict) else {}
+    await ctx.notify(f"Testing skill {name}…")
+    out = await sandbox.run_skill(s["code"], test_args, s.get("secrets") or {}, user_id=ctx.user_id, timeout=60)
+    if out.ok:
+        return _clip(f"Skill '{name}' works. Result: {json.dumps(out.result, default=str)[:1500]}")
+    return _clip(f"Skill '{name}' FAILED: {out.error}\n{(out.traceback or '')[-800:]}\n"
+                 "Fix it with update_skill describing this error.")
 
 
 async def _t_install_skill(args: dict, ctx: ToolContext) -> str:
@@ -454,6 +628,10 @@ async def _t_list_reminders(args: dict, ctx: ToolContext) -> str:
 _HANDLERS = {
     "web_search": _t_web_search,
     "fetch_webpage": _t_fetch,
+    "http_request": _t_http_request,
+    "make_skill_private": _t_make_skill_private,
+    "set_skill_enabled": _t_set_skill_enabled,
+    "test_skill": _t_test_skill,
     "search_images": _t_search_images,
     "generate_image": _t_generate_image,
     "run_python": _t_run_python,

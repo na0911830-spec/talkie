@@ -2,118 +2,156 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Talkie: your friend in every language</title>
-  <meta name="description" content="Chat with Talkie, a best-friend bot that remembers you, searches the web and learns new skills.">
+  <meta name="description" content="Chat with Talkie, a best-friend bot that remembers you, searches the web, writes code and learns new skills.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css">
 </head>
-<body>
+<body class="signed-out" id="body">
   <a class="skip" href="#composer-input">Skip to message box</a>
 
-  <header class="topbar">
-    <div class="who">
-      <span class="avatar" aria-hidden="true">T</span>
-      <div>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar" aria-label="Menu">
+    <div class="side-top">
+      <div class="brand">
+        <span class="avatar" aria-hidden="true">T</span>
+        <span class="brand-name" id="brand-name">Talkie</span>
+      </div>
+      <button class="side-btn new" id="new-chat-btn" type="button">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        New chat
+      </button>
+    </div>
+    <nav class="side-nav" aria-label="Workspace">
+      <button class="side-btn" type="button" data-open-tab="tab-skills" id="open-panel" aria-controls="panel" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M20.5 11H19V7a2 2 0 0 0-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4a2 2 0 0 0-2 2v3.8h1.5a2.7 2.7 0 0 1 0 5.4H2V20a2 2 0 0 0 2 2h3.8v-1.5a2.7 2.7 0 0 1 5.4 0V22H17a2 2 0 0 0 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z"/></svg>
+        My skills
+      </button>
+      <button class="side-btn" type="button" data-open-tab="tab-community">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 9h-3a15 15 0 0 0-1.3-5.2A8 8 0 0 1 18.9 11zM12 4c.8 1 1.9 3.2 2.3 7H9.7C10.1 7.200 11.200 5 12 4zM5.100 13h3a15 15 0 0 0 1.300 5.200A8 8 0 0 1 5.100 13zm3-2h-3a8 8 0 0 1 4.300-5.200A15 15 0 0 0 8.100 11zM12 20c-.8-1-1.900-3.200-2.300-7h4.600c-.4 3.800-1.500 6-2.300 7zm2.600-1.800A15 15 0 0 0 15.900 13h3a8 8 0 0 1-4.300 5.200z"/></svg>
+        Community skills
+      </button>
+      <button class="side-btn" type="button" data-open-tab="tab-memory">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.300A7 7 0 0 0 12 2zM9 20h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z"/></svg>
+        What I remember
+      </button>
+      <button class="side-btn" type="button" data-open-tab="tab-link">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+        Link Telegram
+      </button>
+    </nav>
+    <div class="side-bottom">
+      <button class="side-btn" id="theme-toggle" type="button" aria-label="Toggle dark mode">
+        <span id="theme-icon" aria-hidden="true"></span>
+        <span id="theme-label">Dark mode</span>
+      </button>
+      <button class="side-btn" id="sign-out" type="button">Sign out</button>
+      <p class="side-user" id="side-user"></p>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <div class="stage">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menu-btn" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+      </button>
+      <div class="who">
         <h1 class="bot-name" id="bot-name">Talkie</h1>
-        <p class="status" id="status">Your friend, in every language</p>
+        <p class="status" id="status" aria-live="polite">Your friend, in every language</p>
       </div>
-    </div>
-    <div class="top-actions" id="top-actions">
-      <button class="icon-btn" id="new-chat-btn" aria-label="New Chat" title="Start fresh chat" hidden>
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-      </button>
-      <button class="icon-btn" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
-        <svg id="theme-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
-      </button>
-      <button class="btn ghost small" id="open-panel" aria-controls="panel" aria-expanded="false" hidden>Skills</button>
-      <button class="btn ghost small" id="sign-out" hidden>Sign out</button>
-    </div>
-  </header>
+    </header>
 
-  <main id="main">
-    <!-- Sign in / Sign up -->
-    <section class="signin" id="signin" aria-labelledby="signin-title">
-      <h2 id="signin-title" class="greet">नमस्ते. Hello. Hola.</h2>
-      <p class="lede">Sign in or create an account to start chatting with Talkie.</p>
-      
-      <div class="auth-switch" style="display:flex; gap:8px; margin-bottom:16px;">
-        <button type="button" class="btn primary" id="btn-show-login" style="flex:1;">Sign in</button>
-        <button type="button" class="btn ghost" id="btn-show-signup" style="flex:1;">Sign up</button>
-      </div>
+    <main id="main">
+      <!-- Sign in / Sign up -->
+      <section class="signin" id="signin" aria-labelledby="signin-title">
+        <span class="avatar big" aria-hidden="true">T</span>
+        <h2 id="signin-title" class="greet">नमस्ते. Hello. Hola.</h2>
+        <p class="lede">Sign in or create an account to chat with Talkie.</p>
 
-      <!-- Login Form -->
-      <form id="signin-form" class="signin-form stack">
-        <label for="name">Username or Name</label>
-        <input id="name" name="name" autocomplete="username" required maxlength="40">
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required>
-        <p class="error" id="signin-error" role="alert"></p>
-        <button class="btn primary" type="submit">Sign in</button>
-      </form>
-
-      <!-- Signup Form -->
-      <form id="signup-form" class="signin-form stack" hidden>
-        <label for="signup-username">Username</label>
-        <input id="signup-username" name="username" autocomplete="username" required maxlength="40" placeholder="e.g. rohit">
-        <label for="signup-name">Display Name</label>
-        <input id="signup-name" name="name" autocomplete="name" required maxlength="50" placeholder="e.g. Rohit Sharma">
-        <label for="signup-password">Password</label>
-        <input id="signup-password" name="password" type="password" autocomplete="new-password" required minlength="3">
-        <p class="error" id="signup-error" role="alert"></p>
-        <button class="btn primary" type="submit">Create account</button>
-      </form>
-    </section>
-
-    <!-- Chat -->
-    <section class="chat" id="chat" aria-label="Conversation" hidden>
-      <div class="log" id="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0" aria-label="Messages">
-        <div class="empty" id="empty">
-          <h2 class="greet" id="empty-greet">Kya haal hai?</h2>
-          <p class="lede">Talk to me in Hindi, English, Hinglish or any language. Things to try:</p>
-          <ul class="ideas">
-            <li><button class="idea" type="button">Aaj ka din bahut boring tha yaar</button></li>
-            <li><button class="idea" type="button">Show me photos of the Valley of Flowers</button></li>
-            <li><button class="idea" type="button">आज की बड़ी खबरें क्या हैं?</button></li>
-            <li><button class="idea" type="button">Write a Python script that renames my photos by date</button></li>
-          </ul>
+        <div class="auth-switch" role="group" aria-label="Account">
+          <button type="button" class="btn primary" id="btn-show-login" aria-pressed="true">Sign in</button>
+          <button type="button" class="btn ghost" id="btn-show-signup" aria-pressed="false">Sign up</button>
         </div>
-      </div>
 
-      <form class="composer" id="composer">
-        <label class="sr-only" for="composer-input">Message</label>
-        <input type="file" id="image-upload" accept="image/*" hidden>
-        <button class="icon-btn" type="button" id="btn-upload-image" aria-label="Upload photo" title="Send photo">
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
-        </button>
-        <textarea id="composer-input" rows="1" placeholder="Message Talkie…" enterkeyhint="send"></textarea>
-        <button class="icon-btn" type="button" id="mic" aria-label="Record a voice note" aria-pressed="false">
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.59a6 6 0 0 0 5-5.91Z"/></svg>
-        </button>
-        <button class="icon-btn send" type="submit" id="send" aria-label="Send">
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3.4 20.4 21 12 3.4 3.6l-.01 6.53L15 12l-11.61 1.87z"/></svg>
-        </button>
-      </form>
-    </section>
-  </main>
+        <form id="signin-form" class="signin-form stack">
+          <label for="name">Username or name</label>
+          <input id="name" name="name" autocomplete="username" required maxlength="40">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <p class="error" id="signin-error" role="alert"></p>
+          <button class="btn primary" type="submit">Sign in</button>
+        </form>
 
+        <form id="signup-form" class="signin-form stack" hidden>
+          <label for="signup-username">Username</label>
+          <input id="signup-username" name="username" autocomplete="username" required maxlength="40" placeholder="e.g. rohit">
+          <label for="signup-name">Display name</label>
+          <input id="signup-name" name="name" autocomplete="name" required maxlength="50" placeholder="e.g. Rohit Sharma">
+          <label for="signup-password">Password</label>
+          <input id="signup-password" name="password" type="password" autocomplete="new-password" required minlength="3">
+          <p class="error" id="signup-error" role="alert"></p>
+          <button class="btn primary" type="submit">Create account</button>
+        </form>
+      </section>
+
+      <!-- Chat -->
+      <section class="chat" id="chat" aria-label="Conversation" hidden>
+        <div class="log" id="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0" aria-label="Messages">
+          <div class="thread" id="thread">
+            <div class="empty" id="empty">
+              <h2 class="greet" id="empty-greet">Kya haal hai?</h2>
+              <p class="lede">Ask anything in Hindi, English, Hinglish or any language. I can search the web, read websites, write code and build new skills.</p>
+              <ul class="ideas">
+                <li><button class="idea" type="button"><strong>Latest news</strong><span>What happened in tech today?</span></button></li>
+                <li><button class="idea" type="button"><strong>Read a website</strong><span>Open example.com and show me its HTML source</span></button></li>
+                <li><button class="idea" type="button"><strong>Write code</strong><span>Write a Python script that renames my photos by date and test it</span></button></li>
+                <li><button class="idea" type="button"><strong>Build a skill</strong><span>Make a skill that tells me the weather for any city using wttr.in</span></button></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer-wrap">
+          <form class="composer" id="composer">
+            <label class="sr-only" for="composer-input">Message</label>
+            <input type="file" id="image-upload" accept="image/*" hidden>
+            <button class="icon-btn" type="button" id="btn-upload-image" aria-label="Upload photo" title="Send photo">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+            </button>
+            <textarea id="composer-input" rows="1" placeholder="Message Talkie…" enterkeyhint="send"></textarea>
+            <button class="icon-btn" type="button" id="mic" aria-label="Record a voice note" aria-pressed="false" title="Voice note">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.59a6 6 0 0 0 5-5.91Z"/></svg>
+            </button>
+            <button class="icon-btn send" type="submit" id="send" aria-label="Send message">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 4l7 7-1.4 1.4L13 7.8V20h-2V7.8l-4.6 4.6L5 11z"/></svg>
+            </button>
+          </form>
+          <p class="foot">Talkie can make mistakes. Check important facts. Your chats, memories and skills stay in your own database.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Skills / memory / link panel -->
   <aside class="panel" id="panel" aria-labelledby="panel-title" hidden>
     <div class="panel-head">
       <h2 id="panel-title">Skills &amp; memory</h2>
-      <button class="btn ghost" id="close-panel">Close</button>
+      <button class="btn ghost" id="close-panel" type="button">Close</button>
     </div>
 
     <div class="tabs" role="tablist" aria-label="Panel sections">
-      <button role="tab" id="tab-skills" aria-controls="sec-skills" aria-selected="true">My Skills</button>
-      <button role="tab" id="tab-community" aria-controls="sec-community" aria-selected="false" tabindex="-1">Community Skills</button>
+      <button role="tab" id="tab-skills" aria-controls="sec-skills" aria-selected="true">My skills</button>
+      <button role="tab" id="tab-community" aria-controls="sec-community" aria-selected="false" tabindex="-1">Community</button>
       <button role="tab" id="tab-memory" aria-controls="sec-memory" aria-selected="false" tabindex="-1">Memory</button>
-      <button role="tab" id="tab-link" aria-controls="sec-link" aria-selected="false" tabindex="-1">Link Telegram</button>
+      <button role="tab" id="tab-link" aria-controls="sec-link" aria-selected="false" tabindex="-1">Telegram</button>
     </div>
 
     <section class="tabpanel" id="sec-skills" role="tabpanel" aria-labelledby="tab-skills">
-      <p class="hint">Skills are tools I write for myself from your instructions and API keys. You can also just ask in chat: “make a song skill using this API…”.</p>
+      <p class="hint">Skills are tools I write for myself. They are <strong>private</strong> until you make them public. To upgrade one, just tell me in chat: “upgrade skill NAME so it also…”.</p>
       <ul class="list" id="skill-list"></ul>
       <details class="new-skill">
         <summary>Build a new skill</summary>
@@ -121,12 +159,10 @@
           <label for="skill-name">Name</label>
           <input id="skill-name" required placeholder="song_player" maxlength="40">
           <label for="skill-request">What it should do (include API endpoints and response format)</label>
-          <textarea id="skill-request" rows="6" required></textarea>
+          <textarea id="skill-request" rows="6" required minlength="10"></textarea>
           <label for="skill-secrets">Secrets, one per line as KEY=value</label>
-          <textarea id="skill-secrets" rows="3" spellcheck="false" placeholder="SEARCH_API_URL=https://…&#10;API_KEY=…"></textarea>
-          <label style="display:flex; align-items:center; gap:8px;">
-            <input type="checkbox" id="skill-public"> Share publicly with community
-          </label>
+          <textarea id="skill-secrets" rows="3" spellcheck="false" placeholder="API_KEY=…"></textarea>
+          <label class="check"><input type="checkbox" id="skill-public"> Share publicly with the community (secrets are never shared)</label>
           <p class="error" id="skill-error" role="alert"></p>
           <button class="btn primary" type="submit" id="skill-submit">Build and test skill</button>
         </form>
@@ -134,20 +170,20 @@
     </section>
 
     <section class="tabpanel" id="sec-community" role="tabpanel" aria-labelledby="tab-community" hidden>
-      <p class="hint">Global skills made available by all users. Click "Install" to add any skill to your account.</p>
+      <p class="hint">Skills shared by other people. Installing copies the code to your account without anyone's secrets; add your own keys by asking me.</p>
       <ul class="list" id="community-list"></ul>
     </section>
 
     <section class="tabpanel" id="sec-memory" role="tabpanel" aria-labelledby="tab-memory" hidden>
       <p class="hint">What I remember about you. I search these, plus our older chats, every time we talk.</p>
       <ul class="list" id="memory-list"></ul>
-      <button class="btn ghost" id="reset-chat">Start a fresh conversation</button>
+      <button class="btn ghost" id="reset-chat" type="button">Start a fresh conversation</button>
     </section>
 
     <section class="tabpanel" id="sec-link" role="tabpanel" aria-labelledby="tab-link" hidden>
       <p class="hint">Use the same me (memories and skills) on Telegram and here.</p>
       <h3>From this browser to Telegram</h3>
-      <button class="btn ghost" id="make-code">Get a link code</button>
+      <button class="btn ghost" id="make-code" type="button">Get a link code</button>
       <p class="code-out" id="code-out" aria-live="polite"></p>
       <h3>From Telegram to this browser</h3>
       <form id="link-form" class="stack">
@@ -159,9 +195,7 @@
     </section>
   </aside>
 
-  <footer class="foot">
-    <p>Your chats, memories and skills stay in your own database.</p>
-  </footer>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="./app.js"></script>
 </body>
