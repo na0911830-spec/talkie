@@ -62,5 +62,5 @@ ALLOW_CODE_EXEC = _env("ALLOW_CODE_EXEC", "true").lower() == "true"
 CODE_TIMEOUT_SEC = int(_env("CODE_TIMEOUT_SEC", "25"))
 SKILL_TIMEOUT_SEC = int(_env("SKILL_TIMEOUT_SEC", "120"))
 
-HISTORY_WINDOW = int(_env("HISTORY_WINDOW", "8"))
-MAX_TOOL_STEPS = int(_env("MAX_TOOL_STEPS", "4"))
+HISTORY_WINDOW = int(_env("HISTORY_WINDOW", "20"))
+MAX_TOOL_STEPS = int(_env("MAX_TOOL_STEPS", "6"))
