@@ -14,21 +14,22 @@ if TYPE_CHECKING:  # avoid importing httpx for pure helpers and tests
 
 log = logging.getLogger("dost.skills")
 
-SKILL_SPEC = '''You write a Python "skill" (a tool) for a chat bot. Output EXACTLY two fenced blocks and nothing else.
+SKILL_SPEC = '''You write or update a Python "skill" (a tool) for a chat bot. Output EXACTLY two fenced blocks and nothing else.
 
 Block 1, ```json: {"description": "<one sentence: what it does and when to use it>",
   "parameters": <JSON Schema object for the arguments the chat model will pass>,
-  "test_args": <example arguments for a quick self-test, or null if testing would be harmful/expensive>}
+  "test_args": <example arguments for a quick self-test to verify the APIs and code work end-to-end>}
 
 Block 2, ```python: the code. Rules:
 - Define `def run(args: dict, secrets: dict, ctx) -> dict`.
-- API keys and endpoints the user gave are in `secrets` (use secrets.get("KEY_NAME")); never hardcode them.
+- CRITICAL: When the user provides specific API URLs, endpoints, query parameters, and fallback logic, YOU MUST IMPLEMENT EXACTLY THOSE APIS AND ENDPOINTS. Never replace them with generic demos (e.g. Deezer, Wikipedia) or placeholders.
+- API keys or secrets the user gave are in `secrets` (use secrets.get("KEY_NAME", "default_if_any")).
 - Use only the standard library and `requests` (always pass timeout=30).
-- `ctx.out_dir` is a writable folder. Save downloads there (e.g. os.path.join(ctx.out_dir, "song.mp3")).
+- `ctx.out_dir` is a writable folder. Save downloads there (e.g. os.path.join(ctx.out_dir, "filename.ext")).
 - Return a dict: {"text": "<short human summary>", "images": [url_or_path], "audio": [url_or_path or {"url":..., "title":...}], "video": [...], "files": [...]}. Omit empty keys.
-- Prefer returning a direct media URL; download to ctx.out_dir only when the API needs auth headers or the user asked for a download.
-- Handle errors: raise Exception with a clear message if the API fails.
-- Keep it under 120 lines. No input(), no infinite loops.
+- Check downloaded media files exist and are non-empty before returning them.
+- Handle errors gracefully and raise Exception with clear diagnostic messages if requests or parsing fail.
+- Keep it concise, maintainable, and robust. No input(), no infinite loops.
 '''
 
 FENCE_RE = re.compile(r"```(\w+)?\s*\n(.*?)```", re.S)
@@ -64,6 +65,51 @@ def extract_blocks(text: str) -> tuple[dict, str]:
     return meta, code
 
 
+FORBIDDEN_MODULES = {
+    "os", "sys", "subprocess", "shutil", "socket", "pty", "posix",
+    "commands", "builtins", "__builtin__", "importlib", "signal",
+    "multiprocessing", "threading", "ctypes", "code", "pdb",
+    "webbrowser", "winreg", "_winapi", "asyncio.subprocess",
+}
+
+FORBIDDEN_CALLS = {
+    "eval", "exec", "compile", "__import__", "open", "getattr",
+    "setattr", "delattr", "globals", "locals", "vars", "breakpoint",
+}
+
+FORBIDDEN_ATTRS = {
+    "__subclasses__", "__bases__", "__mro__", "__globals__",
+    "__builtins__", "__class__", "__code__",
+}
+
+
+def check_ast_safety(tree: ast.AST) -> str | None:
+    """Strictly forbid dangerous operations, host access, shell execution, or server exploitation."""
+    for node in ast.walk(tree):
+        # 1. Check imports
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root_pkg = alias.name.split(".")[0]
+                if root_pkg in FORBIDDEN_MODULES:
+                    return f"Importing '{alias.name}' is strictly forbidden for security reasons."
+        elif isinstance(node, ast.ImportFrom):
+            mod = (node.module or "").split(".")[0]
+            if mod in FORBIDDEN_MODULES:
+                return f"Importing from '{node.module}' is strictly forbidden for security reasons."
+
+        # 2. Check function calls
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in FORBIDDEN_CALLS:
+                return f"Calling '{node.func.id}()' is strictly forbidden for security reasons."
+
+        # 3. Check dangerous dunder access (e.g. obj.__class__.__subclasses__)
+        elif isinstance(node, ast.Attribute):
+            if node.attr in FORBIDDEN_ATTRS:
+                return f"Accessing attribute '{node.attr}' is strictly forbidden for security reasons."
+
+    return None
+
+
 def validate_code(code: str) -> str | None:
     """Return an error message, or None when the code is acceptable."""
     if not code:
@@ -75,6 +121,11 @@ def validate_code(code: str) -> str | None:
     has_run = any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "run" for n in tree.body)
     if not has_run:
         return "code must define a top-level function run(args, secrets, ctx)"
+
+    safety_err = check_ast_safety(tree)
+    if safety_err:
+        return safety_err
+
     return None
 
 
@@ -98,15 +149,17 @@ def as_tool(skill: dict) -> dict:
 
 
 async def generate_skill(ai: "WorkersAI", *, name: str, request: str, secrets: dict,
-                         model: str | None = None, attempts: int = 3) -> dict:
+                         existing_code: str = "", model: str | None = None, attempts: int = 3) -> dict:
     """Ask the model for skill code, self-test it, and retry with the error on failure."""
     secret_names = ", ".join(sorted(secrets)) or "(none)"
     user_prompt = (f"Skill name: {name}\nWhat the user wants:\n{request}\n\n"
                    f"Available secret keys (values are hidden): {secret_names}")
+    if existing_code:
+        user_prompt += f"\n\nExisting code to update/improve:\n```python\n{existing_code}\n```"
     feedback = ""
     last: dict = {}
     for attempt in range(1, attempts + 1):
-        text = await ai.complete(SKILL_SPEC, user_prompt + feedback, max_tokens=2200, temperature=0.2, model=model)
+        text = await ai.complete(SKILL_SPEC, user_prompt + feedback, max_tokens=2500, temperature=0.2, model=model)
         meta, code = extract_blocks(text)
         err = validate_code(code)
         last = {"name": name, "description": str(meta.get("description") or request[:200]),

@@ -19,8 +19,15 @@ ROOT = Path(__file__).resolve().parent.parent
 def _limits() -> None:  # pragma: no cover - runs in the child
     try:
         import resource
-        resource.setrlimit(resource.RLIMIT_AS, (1024 * 1024 * 1024, 1024 * 1024 * 1024))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (200 * 1024 * 1024, 200 * 1024 * 1024))
+        # CPU limit: max 15 seconds CPU time to prevent infinite loops or cryptominers
+        resource.setrlimit(resource.RLIMIT_CPU, (15, 20))
+        # Address space (RAM) limit: 300MB max to prevent memory exhaustion
+        resource.setrlimit(resource.RLIMIT_AS, (300 * 1024 * 1024, 300 * 1024 * 1024))
+        # File size limit: 50MB max file writes
+        resource.setrlimit(resource.RLIMIT_FSIZE, (50 * 1024 * 1024, 50 * 1024 * 1024))
+        # Process / thread count limit: prevent fork bombs
+        if hasattr(resource, "RLIMIT_NPROC"):
+            resource.setrlimit(resource.RLIMIT_NPROC, (30, 30))
         os.setsid()
     except Exception:
         pass

@@ -3,17 +3,18 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import secrets as pysecrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, media, skills
+from . import auth, config, media, skills
 from .agent import Agent
 from .ai import WorkersAI
 from .db import Database
@@ -84,8 +85,15 @@ async def current_user(authorization: str = Header(default="")) -> int:
 
 
 class LoginIn(BaseModel):
-    name: str = Field(min_length=1, max_length=40)
+    username: str | None = None
+    name: str | None = None
     password: str
+
+
+class SignupIn(BaseModel):
+    username: str = Field(min_length=2, max_length=40)
+    password: str = Field(min_length=3, max_length=100)
+    name: str = Field(min_length=1, max_length=50)
 
 
 class ChatIn(BaseModel):
@@ -96,6 +104,7 @@ class SkillIn(BaseModel):
     name: str = Field(min_length=2, max_length=40)
     request: str = Field(min_length=10, max_length=12000)
     secrets: dict[str, str] = {}
+    is_public: bool = False
 
 
 class SkillPatch(BaseModel):
@@ -103,10 +112,19 @@ class SkillPatch(BaseModel):
     enabled: bool | None = None
     secrets: dict[str, str] | None = None
     description: str | None = None
+    is_public: bool | None = None
 
 
 class LinkIn(BaseModel):
     code: str
+
+
+def _hash_password(pw: str) -> str:
+    return auth.hash_password(pw)
+
+
+def _verify_password(pw: str, hashed: str) -> bool:
+    return auth.verify_password(pw, hashed)
 
 
 def _web_identity(name: str) -> str:
@@ -130,13 +148,37 @@ async def health():
     return {"ok": True, "telegram": bool(state.telegram), "models": config.CHAT_MODELS}
 
 
+@app.post("/api/signup")
+async def signup(body: SignupIn):
+    username = body.username.strip().lower()
+    existing = await state.db.get_user_by_username(username)
+    if existing:
+        raise HTTPException(400, "Username already taken.")
+    pw_hash = _hash_password(body.password)
+    uid = await state.db.create_user_account(username, pw_hash, body.name.strip())
+    user = await state.db.get_user(uid)
+    return {"token": _sign(uid), "name": user["display_name"] or username, "bot": config.BOT_NAME}
+
+
 @app.post("/api/login")
 async def login(body: LoginIn):
+    user_identifier = (body.username or body.name or "").strip()
+    if not user_identifier:
+        raise HTTPException(400, "Username or name required.")
+    
+    # Check if registered user exists with password hash
+    user = await state.db.get_user_by_username(user_identifier)
+    if user and user.get("password_hash"):
+        if not _verify_password(body.password, user["password_hash"]):
+            raise HTTPException(401, "Invalid username or password.")
+        return {"token": _sign(user["id"]), "name": user["display_name"] or user_identifier, "bot": config.BOT_NAME}
+    
+    # Fallback to global web password for legacy/admin access
     if not hmac.compare_digest(body.password, config.WEB_PASSWORD):
-        raise HTTPException(401, "Wrong password.")
-    uid = await state.db.get_or_create_user("web", _web_identity(body.name), body.name.strip())
-    user = await state.db.get_user(uid)
-    return {"token": _sign(uid), "name": user["display_name"] or body.name, "bot": config.BOT_NAME}
+        raise HTTPException(401, "Wrong password or user not found.")
+    uid = await state.db.get_or_create_user("web", _web_identity(user_identifier), user_identifier)
+    db_user = await state.db.get_user(uid)
+    return {"token": _sign(uid), "name": db_user["display_name"] or user_identifier, "bot": config.BOT_NAME}
 
 
 @app.get("/api/me")
@@ -158,6 +200,27 @@ async def chat(body: ChatIn, uid: int = Depends(current_user)):
     return {"text": reply.text, "attachments": reply.attachments}
 
 
+@app.post("/api/chat/stream")
+async def chat_stream(body: ChatIn, uid: int = Depends(current_user)):
+    async def event_generator():
+        try:
+            async for ev in state.agent.respond_stream(uid, body.text.strip(), channel="web"):
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            log.error("SSE stream error: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.post("/api/voice")
 async def voice(file: UploadFile = File(...), uid: int = Depends(current_user)):
     data = await file.read()
@@ -168,6 +231,21 @@ async def voice(file: UploadFile = File(...), uid: int = Depends(current_user)):
         raise HTTPException(422, "Couldn't hear anything in that recording.")
     reply = await state.agent.respond(uid, f"(voice note) {text}", channel="web")
     return {"transcript": text, "text": reply.text, "attachments": reply.attachments}
+
+
+@app.post("/api/upload_image")
+async def upload_image(file: UploadFile = File(...), caption: str = "", uid: int = Depends(current_user)):
+    data = await file.read()
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(413, "Image file too large (max 15MB).")
+    try:
+        desc = await state.ai.describe_image(data)
+    except Exception as exc:
+        log.warning("Image vision analysis failed: %s", exc)
+        desc = "an uploaded image"
+    prompt_text = f"[I shared an image: {desc}] {caption}".strip()
+    reply = await state.agent.respond(uid, prompt_text, channel="web")
+    return {"description": desc, "text": reply.text, "attachments": reply.attachments}
 
 
 @app.post("/api/reset")
@@ -197,16 +275,32 @@ async def list_skills(uid: int = Depends(current_user)):
     return [_skill_out(s) for s in await state.db.list_skills(uid)]
 
 
+@app.get("/api/skills/public")
+async def list_public_skills(uid: int = Depends(current_user)):
+    return [_skill_out(s) for s in await state.db.list_public_skills(uid)]
+
+
+@app.post("/api/skills/install/{skill_id}")
+async def install_skill(skill_id: int, uid: int = Depends(current_user)):
+    installed = await state.db.install_public_skill(uid, skill_id)
+    if not installed:
+        raise HTTPException(404, "Public skill not found.")
+    return _skill_out(installed)
+
+
 @app.post("/api/skills")
 async def create_skill(body: SkillIn, uid: int = Depends(current_user)):
     name = skills.slugify(body.name)
     secrets = {k.strip().upper(): v for k, v in body.secrets.items() if k.strip()}
+    existing = await state.db.get_skill(uid, name)
+    existing_code = existing["code"] if existing else ""
     try:
         spec = await skills.generate_skill(state.ai, name=name, request=body.request, secrets=secrets,
-                                           model=config.CODE_MODEL)
+                                           existing_code=existing_code, model=config.CODE_MODEL)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    await state.db.save_skill(uid, name, spec["description"], body.request, spec["parameters"], spec["code"], secrets)
+    await state.db.save_skill(uid, name, spec["description"], body.request, spec["parameters"],
+                            spec["code"], secrets, is_public=body.is_public)
     return {**_skill_out(await state.db.get_skill(uid, name)), "tested": spec["tested"],
             "test_output": spec["test_output"]}
 
@@ -218,9 +312,7 @@ async def patch_skill(name: str, body: SkillPatch, uid: int = Depends(current_us
         raise HTTPException(404, "No such skill.")
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     if "code" in fields:
-        err = skills.validate_code(fields["code"])
-        if err:
-            raise HTTPException(422, err)
+        raise HTTPException(403, "Editing skill code directly is disabled for security. Skills can only be viewed or regenerated.")
     if "secrets" in fields:
         fields["secrets"] = {**(skill.get("secrets") or {}),
                              **{k.strip().upper(): v for k, v in fields["secrets"].items() if k.strip()}}

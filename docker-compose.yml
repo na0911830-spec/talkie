@@ -27,7 +27,7 @@ services:
       DATABASE_URL: postgresql://dost:dost@db:5432/dost
       DATA_DIR: /data
     ports:
-      - "8080:8080"
+      - "7000:8080"
     volumes:
       - botdata:/data
 

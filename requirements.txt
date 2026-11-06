@@ -7,3 +7,5 @@ ddgs==9.16.1
 beautifulsoup4==4.12.3
 requests==2.32.3
 python-multipart==0.0.20
+groq==0.18.0
+edge-tts==7.0.2

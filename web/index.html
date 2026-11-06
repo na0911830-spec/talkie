@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dost: your friend in every language</title>
-  <meta name="description" content="Chat with Dost, a best-friend bot that remembers you, searches the web and learns new skills.">
+  <title>Talkie: your friend in every language</title>
+  <meta name="description" content="Chat with Talkie, a best-friend bot that remembers you, searches the web and learns new skills.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans:wght@400;600&display=swap" rel="stylesheet">
@@ -15,30 +15,55 @@
 
   <header class="topbar">
     <div class="who">
-      <span class="avatar" aria-hidden="true">द</span>
+      <span class="avatar" aria-hidden="true">T</span>
       <div>
-        <h1 class="bot-name" id="bot-name">Dost</h1>
+        <h1 class="bot-name" id="bot-name">Talkie</h1>
         <p class="status" id="status">Your friend, in every language</p>
       </div>
     </div>
-    <div class="top-actions" id="top-actions" hidden>
-      <button class="btn ghost" id="open-panel" aria-controls="panel" aria-expanded="false">Skills &amp; memory</button>
-      <button class="btn ghost" id="sign-out">Sign out</button>
+    <div class="top-actions" id="top-actions">
+      <button class="icon-btn" id="new-chat-btn" aria-label="New Chat" title="Start fresh chat" hidden>
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+      </button>
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg id="theme-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
+      </button>
+      <button class="btn ghost small" id="open-panel" aria-controls="panel" aria-expanded="false" hidden>Skills</button>
+      <button class="btn ghost small" id="sign-out" hidden>Sign out</button>
     </div>
   </header>
 
   <main id="main">
-    <!-- Sign in -->
+    <!-- Sign in / Sign up -->
     <section class="signin" id="signin" aria-labelledby="signin-title">
       <h2 id="signin-title" class="greet">नमस्ते. Hello. Hola.</h2>
-      <p class="lede">Tell me what to call you. I'll remember the rest as we talk.</p>
-      <form id="signin-form" class="signin-form">
-        <label for="name">Your name</label>
-        <input id="name" name="name" autocomplete="nickname" required maxlength="40">
-        <label for="password">Access password</label>
+      <p class="lede">Sign in or create an account to start chatting with Talkie.</p>
+      
+      <div class="auth-switch" style="display:flex; gap:8px; margin-bottom:16px;">
+        <button type="button" class="btn primary" id="btn-show-login" style="flex:1;">Sign in</button>
+        <button type="button" class="btn ghost" id="btn-show-signup" style="flex:1;">Sign up</button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="signin-form" class="signin-form stack">
+        <label for="name">Username or Name</label>
+        <input id="name" name="name" autocomplete="username" required maxlength="40">
+        <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required>
         <p class="error" id="signin-error" role="alert"></p>
-        <button class="btn primary" type="submit">Start chatting</button>
+        <button class="btn primary" type="submit">Sign in</button>
+      </form>
+
+      <!-- Signup Form -->
+      <form id="signup-form" class="signin-form stack" hidden>
+        <label for="signup-username">Username</label>
+        <input id="signup-username" name="username" autocomplete="username" required maxlength="40" placeholder="e.g. rohit">
+        <label for="signup-name">Display Name</label>
+        <input id="signup-name" name="name" autocomplete="name" required maxlength="50" placeholder="e.g. Rohit Sharma">
+        <label for="signup-password">Password</label>
+        <input id="signup-password" name="password" type="password" autocomplete="new-password" required minlength="3">
+        <p class="error" id="signup-error" role="alert"></p>
+        <button class="btn primary" type="submit">Create account</button>
       </form>
     </section>
 
@@ -59,7 +84,11 @@
 
       <form class="composer" id="composer">
         <label class="sr-only" for="composer-input">Message</label>
-        <textarea id="composer-input" rows="1" placeholder="Message Dost…" enterkeyhint="send"></textarea>
+        <input type="file" id="image-upload" accept="image/*" hidden>
+        <button class="icon-btn" type="button" id="btn-upload-image" aria-label="Upload photo" title="Send photo">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+        </button>
+        <textarea id="composer-input" rows="1" placeholder="Message Talkie…" enterkeyhint="send"></textarea>
         <button class="icon-btn" type="button" id="mic" aria-label="Record a voice note" aria-pressed="false">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.59a6 6 0 0 0 5-5.91Z"/></svg>
         </button>
@@ -77,7 +106,8 @@
     </div>
 
     <div class="tabs" role="tablist" aria-label="Panel sections">
-      <button role="tab" id="tab-skills" aria-controls="sec-skills" aria-selected="true">Skills</button>
+      <button role="tab" id="tab-skills" aria-controls="sec-skills" aria-selected="true">My Skills</button>
+      <button role="tab" id="tab-community" aria-controls="sec-community" aria-selected="false" tabindex="-1">Community Skills</button>
       <button role="tab" id="tab-memory" aria-controls="sec-memory" aria-selected="false" tabindex="-1">Memory</button>
       <button role="tab" id="tab-link" aria-controls="sec-link" aria-selected="false" tabindex="-1">Link Telegram</button>
     </div>
@@ -94,10 +124,18 @@
           <textarea id="skill-request" rows="6" required></textarea>
           <label for="skill-secrets">Secrets, one per line as KEY=value</label>
           <textarea id="skill-secrets" rows="3" spellcheck="false" placeholder="SEARCH_API_URL=https://…&#10;API_KEY=…"></textarea>
+          <label style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="skill-public"> Share publicly with community
+          </label>
           <p class="error" id="skill-error" role="alert"></p>
           <button class="btn primary" type="submit" id="skill-submit">Build and test skill</button>
         </form>
       </details>
+    </section>
+
+    <section class="tabpanel" id="sec-community" role="tabpanel" aria-labelledby="tab-community" hidden>
+      <p class="hint">Global skills made available by all users. Click "Install" to add any skill to your account.</p>
+      <ul class="list" id="community-list"></ul>
     </section>
 
     <section class="tabpanel" id="sec-memory" role="tabpanel" aria-labelledby="tab-memory" hidden>
