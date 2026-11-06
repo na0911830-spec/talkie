@@ -89,3 +89,33 @@ python -m scripts.live_smoke     # real conversation against Workers AI (uses fr
 
 ## Internet tools
 `web_search` (text/news), `fetch_webpage` (readable text, raw HTML source, link list, paging via offset) and `http_request` (any public API). Private/internal addresses are blocked.
+
+## Skills lifecycle (chat or UI)
+- **Create**: "make a skill called weather using wttr.in" (`create_skill`), self-tested automatically.
+- **Upgrade / fix**: "upgrade skill weather so it also shows tomorrow" (`update_skill`); re-check with `test_skill`.
+- **Private by default**. **Make public**: "share skill weather" or the *Make public* button (web) / `/skills` buttons (Telegram). **Make private** reverses it. Secrets are never shared.
+- **Community**: browse and install other people's skills (`/community`, sidebar); add your own keys afterwards.
+- **Switch off / delete**: `set_skill_enabled`, `delete_skill`, or the panel buttons.
+
+## Internet tools
+`web_search` (text/news), `fetch_webpage` (readable text, raw HTML source, link list, paging via offset) and `http_request` (any public API). Private/internal addresses are blocked.
+
+## Skills lifecycle (chat or UI)
+- **Create**: "make a skill called weather using wttr.in" (`create_skill`), self-tested automatically.
+- **Upgrade / fix**: "upgrade skill weather so it also shows tomorrow" (`update_skill`); re-check with `test_skill`.
+- **Private by default**. **Make public**: "share skill weather" or the *Make public* button (web) / `/skills` buttons (Telegram). **Make private** reverses it. Secrets are never shared.
+- **Community**: browse and install other people's skills (`/community`, sidebar); add your own keys afterwards.
+- **Switch off / delete**: `set_skill_enabled`, `delete_skill`, or the panel buttons.
+
+## Internet tools
+`web_search` (text/news), `fetch_webpage` (readable text, raw HTML source, link list, paging via offset) and `http_request` (any public API). Private/internal addresses are blocked.
+
+## Skills lifecycle (chat or UI)
+- **Create**: "make a skill called weather using wttr.in" (`create_skill`), self-tested automatically.
+- **Upgrade / fix**: "upgrade skill weather so it also shows tomorrow" (`update_skill`); re-check with `test_skill`.
+- **Private by default**. **Make public**: "share skill weather" or the *Make public* button (web) / `/skills` buttons (Telegram). **Make private** reverses it. Secrets are never shared.
+- **Community**: browse and install other people's skills (`/community`, sidebar); add your own keys afterwards.
+- **Switch off / delete**: `set_skill_enabled`, `delete_skill`, or the panel buttons.
+
+## Internet tools
+`web_search` (text/news), `fetch_webpage` (readable text, raw HTML source, link list, paging via offset) and `http_request` (any public API). Private/internal addresses are blocked.
