@@ -194,6 +194,9 @@ def history_to_messages(rows: list[dict]) -> list[dict]:
     for r in rows:
         role = "assistant" if r["role"] == "assistant" else "user"
         content = r["content"]
+        kinds = sorted({a.get("type", "file") for a in (r.get("attachments") or []) if isinstance(a, dict)})
+        if kinds and role == "assistant":
+            content += f"\n[sent: {', '.join(kinds)}]"
         if msgs and msgs[-1]["role"] == role:
             msgs[-1]["content"] += "\n" + content
         else:

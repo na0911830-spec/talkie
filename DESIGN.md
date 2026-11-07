@@ -1,6 +1,6 @@
 # Dost: design direction (web chat)
 
-**Concept:** a quiet, private messaging room for one person and their AI friend. Words come first, in any script: Devanagari, Latin, Arabic, Bengali and more. The design is a calm chat app, not a dashboard and not a landing page.
+**Concept (v2):** a ChatGPT-style workspace: left sidebar (new chat, skills, community, memory, Telegram link), one centred reading column, bot replies as open text with a small avatar, user messages as soft grey pills, a rounded composer. Live work steps ("Searching the web…") appear above the answer. Sidebar becomes a drawer under 860 px. Earlier concept: a quiet, private messaging room for one person and their AI friend. Words come first, in any script: Devanagari, Latin, Arabic, Bengali and more. The design is a calm chat app, not a dashboard and not a landing page.
 
 **One job of the screen:** talk. Skills, memory and Telegram linking sit in a side panel you open when you need them.
 
